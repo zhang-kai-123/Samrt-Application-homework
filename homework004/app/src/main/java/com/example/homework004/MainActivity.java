@@ -1,8 +1,10 @@
 package com.example.homework004;
+
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.text.Editable;
 import android.text.TextWatcher;
@@ -10,6 +12,7 @@ import android.view.View;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
+import android.widget.CompoundButton;
 import android.widget.EditText;
 import android.widget.RadioButton;
 import android.widget.RadioGroup;
@@ -19,7 +22,8 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import com.example.homework004.Util.ViewUtil;
-
+import com.example.homework004.bean.UserInfo;
+import com.example.homework004.database.UserDBHelper;
 
 public class MainActivity extends AppCompatActivity implements View.OnClickListener {
 
@@ -35,9 +39,10 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     private Button btn_login;
     private int mRequestCode = 0; // 跳转页面时的请求代码
     private int mType = 2; // 用户类型
-    private String mPassword = "111111"; // 默认密码
+    private boolean bRemember = false; // 是否记住密码
+    private String mPassword = "18990199"; // 默认密码
     private String mVerifyCode; // 验证码
-
+    private SharedPreferences mShared;
 
 
 
@@ -58,13 +63,25 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         sw_ios = findViewById(R.id.sw_ios);
         tv_ios_result = findViewById(R.id.tv_ios_result);
         btn_login = findViewById(R.id.btn_login);
+
+
+
         // 给rg_login设置单选监听器
         rg_login.setOnCheckedChangeListener(new RadioListener());
         // 给et_phone添加文本变更监听器
         et_phone.addTextChangedListener(new HideTextWatcher(et_phone));
         // 给et_password添加文本变更监听器
         et_password.addTextChangedListener(new HideTextWatcher(et_password));
-
+        sw_ios.setOnCheckedChangeListener(new CheckListener());
+        refreshResult(sw_ios);
+        //从share_login.xml中获取共享参数对象
+        mShared = getSharedPreferences("share_login", MODE_PRIVATE);
+        // 获取共享参数中保存的手机号码
+        String phone = mShared.getString("phone", "");
+        // 获取共享参数中保存的密码
+        String password = mShared.getString("password", "");
+        et_phone.setText(phone); // 给手机号码编辑框填写上次保存的手机号
+        et_password.setText(password); // 给密码编辑框填写上次保存的密码
 
         btn_forget.setOnClickListener(this);
         btn_login.setOnClickListener(this);
@@ -89,6 +106,8 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         sp_type.setSelection(mType);
         // 给下拉框设置选择监听器，一旦用户选中某一项，就触发监听器的onItemSelected方法
         sp_type.setOnItemSelectedListener(new TypeSelectedListener());
+
+
     }
 
     class TypeSelectedListener implements AdapterView.OnItemSelectedListener {
@@ -118,13 +137,14 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                 tv_password.setText("登录密码：");
                 et_password.setHint("请输入密码");
                 btn_forget.setText("忘记密码");
-                sw_ios.setVisibility(View.VISIBLE);
+//                sw_ios.setVisibility(View.VISIBLE);
 
             } else if (checkedId == R.id.rb_verify) { // 选择了验证码登录
                 tv_password.setText("　验证码：");
                 et_password.setHint("请输入验证码");
                 btn_forget.setText("获取验证码");
-                sw_ios.setVisibility(View.INVISIBLE);
+//                sw_ios.setVisibility(View.INVISIBLE);
+
             }
         }
     }
@@ -158,7 +178,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                 return;
             // 手机号码输入达到11位，或者密码/验证码输入达到6位，都关闭输入法软键盘
             if ((mStr.length() == 11 && mMaxLength == 11) ||
-                    (mStr.length() == 6 && mMaxLength == 6)) {
+                    (mStr.length() == 8 && mMaxLength == 8)) {
                 ViewUtil.hideOneInputMethod(MainActivity.this, mView);
             }
         }
@@ -210,14 +230,65 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         }
     }
 
+    // 忘记密码修改后，从后一个页面携带参数返回当前页面时触发
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == mRequestCode && data != null) {
+            // 用户密码已改为新密码，故更新密码变量
+            mPassword = data.getStringExtra("new_password");
+        }
+    }
+
+    // 从修改密码页面返回登录页面，要清空密码的输入框
+
+
+
     @Override
     protected void onRestart() {
         et_password.setText("");
         super.onRestart();
     }
 
+    private void refreshResult(CompoundButton buttonView) {
+        String result = String.format(
+                (buttonView.isChecked()) ? "开" : "关");
+        if (buttonView.getId() == R.id.sw_ios) {
+            tv_ios_result.setText(result);
+        }
+
+    }
+
+    // 选择事件的处理方法
+    private class CheckListener implements CompoundButton.OnCheckedChangeListener {
+        public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+            if (buttonView.getId() == R.id.sw_ios) {
+                bRemember = isChecked;
+                refreshResult(buttonView);
+            }
+        }
+    }
+    // 定义是否记住密码的勾选监听器
+//    private class CheckListener implements CompoundButton.OnCheckedChangeListener {
+//        @Override
+//        public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+//            if (buttonView.getId() == R.id.sw_ios) {
+//                bRemember = isChecked;
+//            }
+//        }
+//    }
     // 校验通过，登录成功
     private void loginSuccess() {
+
+
+        if (bRemember) {
+            //把手机号码和密码都保存到共享参数中
+            SharedPreferences.Editor editor = mShared.edit(); // 获得编辑器的对象
+            editor.putString("phone", et_phone.getText().toString()); // 添加名叫phone的手机号码
+            editor.putString("password", et_password.getText().toString()); // 添加名叫password的密码
+            editor.commit(); // 提交编辑器中的修改
+        }
+
         String desc = String.format("您的手机号码是%s，类型是%s。恭喜你通过登录验证，点击“确定”按钮返回上个页面",
                 et_phone.getText().toString(), typeArray[mType]);
         // 弹出提醒对话框，提示用户登录成功
